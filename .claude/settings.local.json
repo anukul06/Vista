@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create *)",
+      "Bash(mv temp-vista/* . && mv temp-vista/.gitignore . 2>/dev/null; rmdir temp-vista && ls -la)",
+      "Bash(npm install *)",
+      "Bash(npm view *)",
+      "Bash(npm ls *)"
+    ]
+  }
+}
