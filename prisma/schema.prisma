@@ -1,0 +1,272 @@
+// VISTA — Prisma schema
+//
+// Datasource is SQLite for local development (zero-setup, file-based).
+// To move to production Postgres: change `provider` to "postgresql" and
+// point DATABASE_URL at a real Postgres connection string, then re-run
+// `npm run prisma:migrate`. The schema itself uses no SQLite-only features,
+// so the switch is a one-line change.
+//
+// Note on "Leaderboard": rather than a redundant stored table that
+// duplicates User.xp (a normalization smell and a sync-bug risk), the
+// leaderboard is computed on read via `SELECT ... ORDER BY xp DESC` against
+// User, with pagination. This keeps XP as the single source of truth.
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum Year {
+  FIRST
+  SECOND
+  THIRD
+  FOURTH
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+// Courses and workshops are just Events with a different `type` — they need
+// the same title/description/date/capacity/registration/XP machinery, so
+// modeling them as separate tables would just be the same system three
+// times. The landing page and dashboard filter on this field instead.
+enum EventType {
+  EVENT
+  COURSE
+  WORKSHOP
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED
+  WINNER
+}
+
+enum ChallengeDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum SubmissionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum NotificationType {
+  EVENT
+  CHALLENGE
+  BADGE
+  SYSTEM
+  XP
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  password       String
+  rollNumber     String   @unique
+  department     String
+  year           Year
+  githubUsername String?
+  avatarUrl      String?
+  xp             Int      @default(0)
+  level          Int      @default(1)
+  role           Role     @default(STUDENT)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  domains        UserDomain[]
+  registrations  Registration[]
+  submissions    Submission[]
+  badges         UserBadge[]
+  notifications  Notification[]
+  xpAdjustments  XpAdjustment[]
+
+  @@index([xp])
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+}
+
+model Domain {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String
+  icon        String?
+  color       String?
+  createdAt   DateTime @default(now())
+
+  users      UserDomain[]
+  events     Event[]
+  challenges Challenge[]
+}
+
+model UserDomain {
+  id       String   @id @default(cuid())
+  userId   String
+  domainId String
+  joinedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domainId])
+}
+
+model Event {
+  id                   String      @id @default(cuid())
+  type                 EventType   @default(EVENT)
+  title                String
+  description          String
+  bannerUrl            String?
+  date                 DateTime
+  venue                String
+  capacity             Int
+  xpReward             Int         @default(20)
+  registrationDeadline DateTime
+  status               EventStatus @default(DRAFT)
+  domainId             String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  domain        Domain?        @relation(fields: [domainId], references: [id])
+  registrations Registration[]
+  gallery       Gallery[]
+
+  @@index([status, date])
+  @@index([type, status])
+}
+
+model Registration {
+  id           String             @id @default(cuid())
+  userId       String
+  eventId      String
+  status       RegistrationStatus @default(REGISTERED)
+  registeredAt DateTime           @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+}
+
+model Challenge {
+  id          String              @id @default(cuid())
+  title       String
+  description String
+  difficulty  ChallengeDifficulty
+  deadline    DateTime
+  xp          Int
+  domainId    String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  domain      Domain?      @relation(fields: [domainId], references: [id])
+  submissions Submission[]
+
+  @@index([deadline])
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  userId      String
+  challengeId String
+  githubRepo  String
+  demoLink    String?
+  notes       String?
+  status      SubmissionStatus @default(PENDING)
+  submittedAt DateTime         @default(now())
+  reviewedAt  DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeId])
+}
+
+model Badge {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String
+  icon        String?
+  xpThreshold Int?
+  criteria    String? @unique
+
+  users UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  userId   String
+  badgeId  String
+  earnedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(SYSTEM)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+}
+
+// Audit trail for every XP change so "why does this student have this XP"
+// is always answerable — automatic awards (join/attend/challenge/win) and
+// manual admin adjustments both write here.
+model XpAdjustment {
+  id        String   @id @default(cuid())
+  userId    String
+  amount    Int
+  reason    String
+  source    String // e.g. "ADMIN_MANUAL", "EVENT_JOIN", "CHALLENGE_ACCEPTED"
+  adminId   String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Gallery {
+  id        String   @id @default(cuid())
+  imageUrl  String
+  caption   String?
+  eventId   String?
+  createdAt DateTime @default(now())
+
+  event Event? @relation(fields: [eventId], references: [id])
+}

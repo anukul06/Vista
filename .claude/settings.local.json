@@ -5,7 +5,29 @@
       "Bash(mv temp-vista/* . && mv temp-vista/.gitignore . 2>/dev/null; rmdir temp-vista && ls -la)",
       "Bash(npm install *)",
       "Bash(npm view *)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(npm -v)",
+      "Bash(docker -v)",
+      "Bash(brew list *)",
+      "Bash(git mv *)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(48\\).toString\\('hex'\\)\\)\")",
+      "Bash(sed -i '' 's#replace-with-a-long-random-secret#__TRACKED_VAR__#' .env)",
+      "Bash(sed -i '' 's#replace-with-a-different-long-random-secret#__TRACKED_VAR__#' .env)",
+      "Bash(sed -i '' \"s#change-me-now#VistaAdmin@2026#\" .env)",
+      "Bash(npx prisma *)",
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate dev --schema=./prisma/schema.prisma --name init)",
+      "Bash(npm run *)",
+      "Bash(pkill -f \"tsx watch src/index.ts\")",
+      "Bash(lsof -ti:4000)",
+      "Bash(xargs -r kill -9)",
+      "Bash(env)",
+      "Bash(lsof -ti:5173,5174,4000)",
+      "Bash(lsof -ti:5173,4000)",
+      "Bash(curl -s http://localhost:4000/api/health)",
+      "Bash(curl -s http://localhost:5173 -o /dev/null -w \"client status: %{http_code}\\\\n\")",
+      "Bash(curl -s -X POST http://localhost:4000/api/auth/signup -H \"Content-Type: application/json\" -d '{\"name\":\"Debug User\",\"email\":\"debug@vista.club\",\"rollNumber\":\"DBG001\",\"department\":\"CSE\",\"year\":\"SECOND\",\"password\":\"DebugPass1\"}')",
+      "Bash(curl -s -X POST http://localhost:4000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"debug@vista.club\",\"password\":\"DebugPass1\"}')",
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate dev --schema=./prisma/schema.prisma --name admin_events_xp)"
     ]
   }
 }
