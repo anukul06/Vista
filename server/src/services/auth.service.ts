@@ -32,12 +32,17 @@ async function issueTokens(userId: string, role: 'STUDENT' | 'ADMIN') {
 
 export const authService = {
   async signup(input: SignupInput) {
-    const [existingEmail, existingRoll] = await Promise.all([
+    const [existingEmail, existingRoll, existingAdmin] = await Promise.all([
       userRepository.findByEmail(input.email),
       userRepository.findByRollNumber(input.rollNumber),
+      adminRepository.findByEmail(input.email),
     ])
     if (existingEmail) throw ApiError.conflict('An account with this email already exists')
     if (existingRoll) throw ApiError.conflict('An account with this roll number already exists')
+    // Admin and student accounts share the login form but must never collide
+    // on email — login resolves User before Admin, so a colliding student
+    // signup would silently shadow an admin account forever.
+    if (existingAdmin) throw ApiError.conflict('An account with this email already exists')
 
     const passwordHash = await hashPassword(input.password)
     const user = await userRepository.create({

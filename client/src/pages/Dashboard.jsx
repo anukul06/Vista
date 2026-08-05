@@ -82,6 +82,17 @@ function AdminDashboard({ user, onExit }) {
 
   // Attendance states
   const [attendanceViewEvent, setAttendanceViewEvent] = useState(null)
+  const [attendanceChecked, setAttendanceChecked] = useState({})
+  const [attendanceSaving, setAttendanceSaving] = useState(false)
+
+  // Student edit/delete states
+  const [editingStudent, setEditingStudent] = useState(false)
+  const [studentForm, setStudentForm] = useState(null)
+  const [studentFormSaving, setStudentFormSaving] = useState(false)
+
+  // Broadcast notification states
+  const [broadcastForm, setBroadcastForm] = useState({ title: '', message: '' })
+  const [broadcastSending, setBroadcastSending] = useState(false)
 
   // Search filter states
   const [studentSearch, setStudentSearch] = useState('')
@@ -109,11 +120,72 @@ function AdminDashboard({ user, onExit }) {
 
   const handleStudentClick = async (student) => {
     setSelectedStudent(student)
+    setEditingStudent(false)
     try {
       const details = await api.get(`/students/${student.id}`)
       setStudentDetails(details)
     } catch (err) {
       alert('Error fetching student details: ' + err.message)
+    }
+  }
+
+  const startEditStudent = () => {
+    if (!studentDetails) return
+    setStudentForm({
+      name: studentDetails.name,
+      email: studentDetails.email,
+      rollNumber: studentDetails.rollNumber,
+      department: studentDetails.department,
+      year: studentDetails.year,
+      githubUsername: studentDetails.githubUsername || '',
+    })
+    setEditingStudent(true)
+  }
+
+  const handleCommitStudentEdit = async (e) => {
+    e.preventDefault()
+    if (!selectedStudent || !studentForm) return
+    try {
+      setStudentFormSaving(true)
+      await api.patch(`/students/${selectedStudent.id}`, studentForm)
+      const details = await api.get(`/students/${selectedStudent.id}`)
+      setStudentDetails(details)
+      setSelectedStudent(details)
+      setEditingStudent(false)
+      fetchData()
+    } catch (err) {
+      alert(err.message || 'Failed to save student details')
+    } finally {
+      setStudentFormSaving(false)
+    }
+  }
+
+  const handleDeleteStudent = async (student) => {
+    if (!confirm(`Permanently delete ${student.name}'s account? This removes their registrations, badges, and XP history too.`)) return
+    try {
+      await api.del(`/students/${student.id}`)
+      if (selectedStudent?.id === student.id) {
+        setSelectedStudent(null)
+        setStudentDetails(null)
+      }
+      fetchData()
+    } catch (err) {
+      alert(err.message || 'Failed to delete student')
+    }
+  }
+
+  const handleBroadcast = async (e) => {
+    e.preventDefault()
+    if (!broadcastForm.title.trim() || !broadcastForm.message.trim()) return
+    try {
+      setBroadcastSending(true)
+      const result = await api.post('/notifications/broadcast', broadcastForm)
+      alert(`Sent to ${result.sentTo} student${result.sentTo === 1 ? '' : 's'}`)
+      setBroadcastForm({ title: '', message: '' })
+    } catch (err) {
+      alert(err.message || 'Failed to send notification')
+    } finally {
+      setBroadcastSending(false)
     }
   }
 
@@ -217,6 +289,26 @@ function AdminDashboard({ user, onExit }) {
     }
   }
 
+  const handleMarkAllAttended = async () => {
+    if (!attendanceViewEvent) return
+    const pending = attendanceViewEvent.registrations.filter((r) => r.status === 'REGISTERED')
+    if (pending.length === 0) return
+    if (!confirm(`Mark all ${pending.length} registered student(s) as attended (+40 XP each)?`)) return
+    try {
+      setAttendanceSaving(true)
+      await Promise.all(
+        pending.map((reg) => api.patch(`/events/${attendanceViewEvent.id}/registrations/${reg.id}`, { status: 'ATTENDED' })),
+      )
+      const updatedEvent = await api.get(`/events/${attendanceViewEvent.id}`)
+      setAttendanceViewEvent(updatedEvent)
+      fetchData()
+    } catch (err) {
+      alert(err.message || 'Bulk attendance failed')
+    } finally {
+      setAttendanceSaving(false)
+    }
+  }
+
   const filteredStudents = students.filter(
     (s) =>
       s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
@@ -250,6 +342,7 @@ function AdminDashboard({ user, onExit }) {
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'students', label: 'Students', icon: Users },
             { id: 'sessions', label: 'Manage Sessions', icon: BookOpen },
+            { id: 'notifications', label: 'Notifications', icon: Bell },
           ].map((item) => {
             const Icon = item.icon
             const isActive = activeTab === item.id
@@ -420,18 +513,70 @@ function AdminDashboard({ user, onExit }) {
                               </div>
                             </td>
                             <td className="py-3 text-right">
-                              <button
-                                onClick={() => handleStudentClick(student)}
-                                className="pixel-corners border-2 border-vista-gold bg-vista-gold/10 px-3 py-1 text-[11px] text-vista-gold hover:bg-vista-gold hover:text-vista-night"
-                              >
-                                View Details & XP
-                              </button>
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  onClick={() => handleStudentClick(student)}
+                                  className="pixel-corners border-2 border-vista-gold bg-vista-gold/10 px-3 py-1 text-[11px] text-vista-gold hover:bg-vista-gold hover:text-vista-night"
+                                >
+                                  View Details & XP
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteStudent(student)}
+                                  title="Delete student"
+                                  className="pixel-corners border-2 border-vista-red/40 bg-vista-red/10 p-1.5 text-vista-red hover:bg-vista-red hover:text-vista-cream"
+                                >
+                                  <Trash size={14} />
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
+                </section>
+              )}
+
+              {/* NOTIFICATIONS / BROADCAST TAB */}
+              {activeTab === 'notifications' && (
+                <section className="pixel-corners border-2 border-vista-cream/15 bg-vista-night-2/70 p-6 max-w-xl">
+                  <h2 className="font-pixel text-sm text-vista-gold">Push Notification</h2>
+                  <p className="text-xs text-vista-cream/60 mt-1 mb-6">
+                    Send an announcement straight to every student's dashboard inbox — new sessions, deadline reminders, anything.
+                  </p>
+                  <form onSubmit={handleBroadcast} className="flex flex-col gap-4 font-mono-pixel text-sm">
+                    <div>
+                      <label className="block text-xs text-vista-cream/50 mb-1">Title</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. New workshop just dropped"
+                        value={broadcastForm.title}
+                        onChange={(e) => setBroadcastForm({ ...broadcastForm, title: e.target.value })}
+                        className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-vista-cream/50 mb-1">Message</label>
+                      <textarea
+                        placeholder="What do students need to know?"
+                        value={broadcastForm.message}
+                        onChange={(e) => setBroadcastForm({ ...broadcastForm, message: e.target.value })}
+                        className="w-full h-24 pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold resize-none"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={broadcastSending}
+                      className="pixel-corners border-2 border-vista-gold bg-vista-gold text-vista-night py-2 font-pixel text-[10px] hover:bg-vista-purple hover:text-vista-cream hover:border-vista-purple transition-all disabled:opacity-60"
+                    >
+                      {broadcastSending ? 'Sending...' : 'Send to All Students'}
+                    </button>
+                  </form>
+                  <p className="text-[11px] text-vista-cream/40 mt-4">
+                    Heads up: publishing a session as "Published" already notifies every student automatically — use this for anything else.
+                  </p>
                 </section>
               )}
 
@@ -542,6 +687,14 @@ function AdminDashboard({ user, onExit }) {
                       <h2 className="font-pixel text-sm text-vista-gold">{attendanceViewEvent.title}</h2>
                       <p className="text-xs text-vista-cream/60 mt-1">Mark attendance or set winners. Any status update will automatically adjust student XP.</p>
                     </div>
+                    <button
+                      onClick={handleMarkAllAttended}
+                      disabled={attendanceSaving || !attendanceViewEvent.registrations?.some((r) => r.status === 'REGISTERED')}
+                      className="flex items-center gap-2 pixel-corners border-2 border-vista-blue bg-vista-blue/10 px-4 py-2 font-pixel text-[11px] text-vista-blue hover:bg-vista-blue hover:text-vista-cream disabled:opacity-40 disabled:hover:bg-vista-blue/10 disabled:hover:text-vista-blue transition-all"
+                    >
+                      <CheckCircle size={14} />
+                      {attendanceSaving ? 'Marking...' : 'Mark All Attended'}
+                    </button>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -630,21 +783,122 @@ function AdminDashboard({ user, onExit }) {
                 [x]
               </button>
 
-              <div className="mb-6 flex items-center gap-4">
-                <img
-                  src={avatarFor(selectedStudent.email, selectedStudent.githubUsername)}
-                  className="h-16 w-16 border-2 border-vista-gold bg-vista-purple"
-                  alt=""
-                />
-                <div>
-                  <h3 className="font-pixel text-sm text-vista-gold">{selectedStudent.name}</h3>
-                  <p className="text-vista-cream/60 text-sm mt-1">
-                    {selectedStudent.rollNumber} · {selectedStudent.department} · Year {selectedStudent.year}
-                  </p>
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={avatarFor(selectedStudent.email, selectedStudent.githubUsername)}
+                    className="h-16 w-16 border-2 border-vista-gold bg-vista-purple"
+                    alt=""
+                  />
+                  <div>
+                    <h3 className="font-pixel text-sm text-vista-gold">{selectedStudent.name}</h3>
+                    <p className="text-vista-cream/60 text-sm mt-1">
+                      {selectedStudent.rollNumber} · {selectedStudent.department} · Year {selectedStudent.year}
+                    </p>
+                  </div>
                 </div>
+                {!editingStudent && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={startEditStudent}
+                      className="flex items-center gap-1.5 pixel-corners border-2 border-vista-cream/20 bg-white/5 px-3 py-1.5 text-[11px] text-vista-cream/80 hover:border-vista-gold hover:text-vista-gold"
+                    >
+                      <Edit size={12} />
+                      Edit Profile
+                    </button>
+                    <button
+                      onClick={() => handleDeleteStudent(selectedStudent)}
+                      className="flex items-center gap-1.5 pixel-corners border-2 border-vista-red/40 bg-vista-red/10 px-3 py-1.5 text-[11px] text-vista-red hover:bg-vista-red hover:text-vista-cream"
+                    >
+                      <Trash size={12} />
+                      Delete
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {studentDetails ? (
+              {editingStudent && studentForm ? (
+                <form onSubmit={handleCommitStudentEdit} className="grid gap-4 sm:grid-cols-2 font-mono-pixel text-sm">
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">Name</label>
+                    <input
+                      type="text"
+                      value={studentForm.name}
+                      onChange={(e) => setStudentForm({ ...studentForm, name: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={studentForm.email}
+                      onChange={(e) => setStudentForm({ ...studentForm, email: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">Roll Number</label>
+                    <input
+                      type="text"
+                      value={studentForm.rollNumber}
+                      onChange={(e) => setStudentForm({ ...studentForm, rollNumber: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">Department</label>
+                    <input
+                      type="text"
+                      value={studentForm.department}
+                      onChange={(e) => setStudentForm({ ...studentForm, department: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">Year</label>
+                    <select
+                      value={studentForm.year}
+                      onChange={(e) => setStudentForm({ ...studentForm, year: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                    >
+                      <option value="FIRST">1st Year</option>
+                      <option value="SECOND">2nd Year</option>
+                      <option value="THIRD">3rd Year</option>
+                      <option value="FOURTH">4th Year</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-vista-cream/50 mb-1">GitHub Username</label>
+                    <input
+                      type="text"
+                      value={studentForm.githubUsername}
+                      onChange={(e) => setStudentForm({ ...studentForm, githubUsername: e.target.value })}
+                      className="w-full pixel-corners border-2 border-vista-cream/20 bg-vista-night p-2 text-sm outline-none focus:border-vista-gold"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 flex gap-3 mt-2">
+                    <button
+                      type="submit"
+                      disabled={studentFormSaving}
+                      className="flex-1 pixel-corners border-2 border-vista-gold bg-vista-gold text-vista-night py-2 font-pixel text-[10px] hover:bg-vista-purple hover:text-vista-cream hover:border-vista-purple transition-all disabled:opacity-60"
+                    >
+                      {studentFormSaving ? 'Saving...' : 'Commit Changes'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingStudent(false)}
+                      className="pixel-corners border-2 border-vista-cream/20 px-4 py-2 font-pixel text-[10px] text-vista-cream/70 hover:text-vista-cream"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : studentDetails ? (
                 <div className="grid gap-6 md:grid-cols-2">
                   <div>
                     <h4 className="font-pixel text-[10px] text-vista-cream/60 mb-2">XP MODIFICATION</h4>

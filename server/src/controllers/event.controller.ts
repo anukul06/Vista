@@ -1,10 +1,26 @@
 import type { Request, Response } from 'express'
 import { prisma } from '../config/prisma.js'
 import { applyXpDelta } from '../services/xp.service.js'
+import { notificationRepository } from '../repositories/notification.repository.js'
 import { ApiError } from '../utils/ApiError.js'
 import { sendSuccess } from '../utils/ApiResponse.js'
 import { asyncHandler } from '../utils/asyncHandler.js'
 import { XP_RULES } from '../../../shared/constants.js'
+
+const TYPE_LABEL: Record<string, string> = { EVENT: 'event', COURSE: 'course', WORKSHOP: 'workshop' }
+
+// Pushes a notification to every student when an event/course/workshop goes
+// live, so "admin publishes → students see it" doesn't rely on them noticing
+// the landing page changed on their own.
+async function notifyStudentsOfPublish(event: { id: string; title: string; type: string }) {
+  const students = await prisma.user.findMany({ where: { role: 'STUDENT' }, select: { id: true } })
+  await notificationRepository.createMany(
+    students.map((s) => s.id),
+    `New ${TYPE_LABEL[event.type] ?? 'session'} posted`,
+    `"${event.title}" just went live — check it out and register.`,
+    'EVENT',
+  )
+}
 
 export const eventController = {
   // List events (public & students only see PUBLISHED; admins see all)
@@ -106,6 +122,10 @@ export const eventController = {
       },
     })
 
+    if (event.status === 'PUBLISHED') {
+      await notifyStudentsOfPublish(event)
+    }
+
     sendSuccess(res, event, 201)
   }),
 
@@ -133,6 +153,10 @@ export const eventController = {
       where: { id },
       data: updateData,
     })
+
+    if (existingEvent.status !== 'PUBLISHED' && event.status === 'PUBLISHED') {
+      await notifyStudentsOfPublish(event)
+    }
 
     sendSuccess(res, event)
   }),
