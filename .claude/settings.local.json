@@ -27,7 +27,14 @@
       "Bash(curl -s http://localhost:5173 -o /dev/null -w \"client status: %{http_code}\\\\n\")",
       "Bash(curl -s -X POST http://localhost:4000/api/auth/signup -H \"Content-Type: application/json\" -d '{\"name\":\"Debug User\",\"email\":\"debug@vista.club\",\"rollNumber\":\"DBG001\",\"department\":\"CSE\",\"year\":\"SECOND\",\"password\":\"DebugPass1\"}')",
       "Bash(curl -s -X POST http://localhost:4000/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"debug@vista.club\",\"password\":\"DebugPass1\"}')",
-      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate dev --schema=./prisma/schema.prisma --name admin_events_xp)"
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate dev --schema=./prisma/schema.prisma --name admin_events_xp)",
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate status --schema=./prisma/schema.prisma)",
+      "Bash(lsof -ti:5173)",
+      "Bash(echo \"client:$?\")",
+      "Bash(echo \"server:$?\")",
+      "Bash(DATABASE_URL=\"file:./dev.db\" node --env-file=.env check.mjs)",
+      "Bash(DATABASE_URL=\"file:./dev.db\" npx prisma migrate status --schema=../prisma/schema.prisma)",
+      "Bash(gh pr create --base main --head feature/admin-notifications-student-management --title 'Add admin push notifications, student edit/delete, and bulk attendance' --body ' *)"
     ]
   }
 }
